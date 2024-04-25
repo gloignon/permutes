@@ -24,8 +24,8 @@
 #' }
 #' @importFrom stats gaussian
 #' @export
-clusterperm.lmer <- function (formula,data=NULL,family=gaussian(),weights=NULL,offset=NULL,series.var=~0,buildmerControl=list(direction='order',crit='LRT',quiet=TRUE,ddf='lme4'),nperm=1000,type='regression',parallel=FALSE,progress='none') {
-	return(clusterperm.work(buildmer::buildmer,formula,data,family,weights,offset,series.var,buildmerControl,nperm,type,parallel,progress))
+clusterperm.lmer <- function (formula,data=NULL,family=gaussian(),weights=NULL,offset=NULL,series.var=~0,buildmerControl=list(direction='order',crit='LRT',quiet=TRUE,ddf='lme4'),nperm=1000,type='regression',parallel=FALSE,progress='none', alpha_thresh = .95) {
+	return(clusterperm.work(buildmer::buildmer,formula,data,family,weights,offset,series.var,buildmerControl,nperm,type,parallel,progress, alpha_thresh))
 }
 
 #' Cluster-based permutation tests for time series data, based on \code{buildglmmTMB}.
@@ -52,15 +52,15 @@ clusterperm.lmer <- function (formula,data=NULL,family=gaussian(),weights=NULL,o
 #' }
 #' @importFrom stats gaussian
 #' @export
-clusterperm.glmmTMB <- function (formula,data=NULL,family=gaussian(),weights=NULL,offset=NULL,series.var=~0,buildmerControl=list(direction='order',crit='LRT',quiet=TRUE),nperm=1000,type='regression',parallel=FALSE,progress='none') {
+clusterperm.glmmTMB <- function (formula,data=NULL,family=gaussian(),weights=NULL,offset=NULL,series.var=~0,buildmerControl=list(direction='order',crit='LRT',quiet=TRUE),nperm=1000,type='regression',parallel=FALSE,progress='none', alpha_thresh = .95) {
 	if (type == 'anova') {
 		stop('ANOVA is not available for glmmTMB models')
 	}
 	pkgcheck(c('glmmTMB','buildmer'))
-	return(clusterperm.work(buildmer::buildglmmTMB,formula,data,family,weights,offset,series.var,buildmerControl,nperm,type,parallel,progress))
+	return(clusterperm.work(buildmer::buildglmmTMB,formula,data,family,weights,offset,series.var,buildmerControl,nperm,type,parallel,progress, alpha_thresh ))
 }
 
-clusterperm.work <- function (buildmer,formula,data,family,weights,offset,series.var,buildmerControl,nperm,type,parallel,progress) {
+clusterperm.work <- function (buildmer,formula,data,family,weights,offset,series.var,buildmerControl,nperm,type,parallel,progress, alpha_thresh = .95) {
 	if (length(type) != 1 || !type %in% c('anova','regression')) {
 		stop("Invalid 'type' argument (specify one of 'anova' or 'regression')")
 	}
@@ -156,7 +156,7 @@ clusterperm.work <- function (buildmer,formula,data,family,weights,offset,series
 	for (x in unique(df$Factor)) {
 		this.factor <- lapply(perms,`[[`,x) #all timepoints for this one factor
 		df.LRT <- max(sapply(this.factor,function (x) x$df),na.rm=TRUE) #these will all be the same (because they are the same model comparison and these are ndf), except possibly in cases of rank-deficiency, hence why max is correct
-		thresh <- stats::qchisq(.95,df.LRT) + .001 #+.001 to account for epsilon errors
+		thresh <- stats::qchisq(alpha_thresh,df.LRT) + .001 #+.001 to account for epsilon errors
 		samp   <- sapply(this.factor,function (x) c(x$LRT,x$perms)) #columns are time, rows are samples
 		p      <- apply(samp,2,function (x) if (sum(!is.na(x)) == 1) NA else mean(x[-1]+.001 >= x[1],na.rm=TRUE))
 		# see GH issue #4: computing the cluster-mass test will fail in some cases, e.g. when only the intercept is involved (which is not permuted)
